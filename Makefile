@@ -1,10 +1,13 @@
 GKRELLM_CFLAGS = $(shell pkg-config gkrellm --cflags)
 GKRELLM_LIBS   = $(shell pkg-config gkrellm --libs)
 
+LIBNL_CFLAGS = $(shell pkg-config --cflags libnl-genl-3.0)
+LIBNL_LIBS   = $(shell pkg-config --libs libnl-genl-3.0)
 
-CFLAGS  += -Wall -O2 -fPIC $(GKRELLM_CFLAGS) -DG_LOG_DOMAIN=\"gkrellm-wifi\"
+
+CFLAGS  += -Wall -O2 -fPIC $(GKRELLM_CFLAGS) $(LIBNL_CFLAGS) -DG_LOG_DOMAIN=\"gkrellm-wifi\"
 LDFLAGS  = -shared
-LIBS     = $(GKRELLM_LIBS) -lm
+LIBS     = $(GKRELLM_LIBS) $(LIBNL_LIBS) -lm
 
 
 OBJECTS = \

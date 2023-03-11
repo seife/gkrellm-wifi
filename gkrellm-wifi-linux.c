@@ -17,6 +17,15 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+/*
+ * netlink code for kernels > 6.2 added 2023
+ * by Stefan Seyfried <seife@tuboxcvs.slipkontur.de>
+ * most of this was inspired by https://github.com/Alamot/code-snippets.git
+ * which is public domain
+ */
+
+/* define to 1 for old code */
+#define USE_LEGACY_WEXT 0
 
 #include "gkrellm-wifi.h"
 
@@ -29,13 +38,22 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#if USE_LEGACY_WEXT
 #include <linux/wireless.h>
+#else
+#include <netlink/netlink.h>    //lots of netlink functions
+#include <netlink/genl/genl.h>  //genl_connect, genlmsg_put
+#include <netlink/genl/family.h>
+#include <netlink/genl/ctrl.h>  //genl_ctrl_resolve
+#include <linux/nl80211.h>      //NL80211 definitions
+#endif
 
 #include "gkrellm-wifi-monitor.h"
 
 #include "gkrellm-wifi-linux.h"
 
 
+#if USE_LEGACY_WEXT
 #define MAX_LINE_LENGTH     128
 #define PROC_NET_WIRELESS   "/proc/net/wireless"
 #define DEFAULT_QUALITY_MAX 96
@@ -415,3 +433,244 @@ get_essid (const gchar *interface)
 
   return ret;
 }
+#else
+
+/* netlink stuff */
+typedef struct {
+  int id;
+  struct nl_sock* socket;
+  struct nl_cb* cb1,* cb2;
+  int result1, result2;
+} Netlink;
+
+typedef struct {
+  char ifname[30];
+  int ifindex;
+  int signal;
+  int txrate;
+} Wifi;
+
+static Netlink netlink = { .id = -1 };
+static Wifi wifi;
+
+static struct nla_policy stats_policy[NL80211_STA_INFO_MAX + 1] = {
+  [NL80211_STA_INFO_SIGNAL] = { .type = NLA_U8 },
+  [NL80211_STA_INFO_TX_BITRATE] = { .type = NLA_NESTED }
+};
+
+static struct nla_policy rate_policy[NL80211_RATE_INFO_MAX + 1] = {
+  [NL80211_RATE_INFO_BITRATE] = { .type = NLA_U16 }
+};
+
+static int finish_handler(struct nl_msg *msg, void *arg);
+static int getWifiName_callback(struct nl_msg *msg, void *arg);
+static int getWifiInfo_callback(struct nl_msg *msg, void *arg);
+static int getWifiStatus(Netlink* nl, Wifi* w);
+
+static int initNl80211(Netlink* nl, Wifi* w) {
+  nl->socket = nl_socket_alloc();
+  if (!nl->socket) {
+    g_message("Failed to allocate netlink socket.");
+    return -ENOMEM;
+  }
+
+  nl_socket_set_buffer_size(nl->socket, 8192, 8192);
+
+  if (genl_connect(nl->socket)) {
+    g_message("Failed to connect to netlink socket.");
+    nl_close(nl->socket);
+    nl_socket_free(nl->socket);
+    return -ENOLINK;
+  }
+
+  nl->id = genl_ctrl_resolve(nl->socket, "nl80211");
+  if (nl->id< 0) {
+    g_message("Nl80211 interface not found.");
+    nl_close(nl->socket);
+    nl_socket_free(nl->socket);
+    return -ENOENT;
+  }
+
+  nl->cb1 = nl_cb_alloc(NL_CB_DEFAULT);
+  nl->cb2 = nl_cb_alloc(NL_CB_DEFAULT);
+  if ((!nl->cb1) || (!nl->cb2)) {
+     g_message("Failed to allocate netlink callback.");
+     nl_close(nl->socket);
+     nl_socket_free(nl->socket);
+     return -ENOMEM;
+  }
+
+  nl_cb_set(nl->cb1, NL_CB_VALID , NL_CB_CUSTOM, getWifiName_callback, w);
+  nl_cb_set(nl->cb1, NL_CB_FINISH, NL_CB_CUSTOM, finish_handler, &(nl->result1));
+  nl_cb_set(nl->cb2, NL_CB_VALID , NL_CB_CUSTOM, getWifiInfo_callback, w);
+  nl_cb_set(nl->cb2, NL_CB_FINISH, NL_CB_CUSTOM, finish_handler, &(nl->result2));
+
+  return nl->id;
+}
+
+
+static int finish_handler(struct nl_msg *msg, void *arg) {
+  int *ret = arg;
+  *ret = 0;
+  return NL_SKIP;
+}
+
+
+static int getWifiName_callback(struct nl_msg *msg, void *arg)
+{
+  struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
+  struct nlattr *tb_msg[NL80211_ATTR_MAX + 1];
+  //nl_msg_dump(msg, stdout);
+
+  nla_parse(tb_msg,
+            NL80211_ATTR_MAX,
+            genlmsg_attrdata(gnlh, 0),
+            genlmsg_attrlen(gnlh, 0),
+            NULL);
+
+  if (tb_msg[NL80211_ATTR_IFNAME])
+    strcpy(((Wifi*)arg)->ifname, nla_get_string(tb_msg[NL80211_ATTR_IFNAME]));
+
+  if (tb_msg[NL80211_ATTR_IFINDEX])
+    ((Wifi*)arg)->ifindex = nla_get_u32(tb_msg[NL80211_ATTR_IFINDEX]);
+
+  return NL_SKIP;
+}
+
+
+static int getWifiInfo_callback(struct nl_msg *msg, void *arg)
+{
+  struct nlattr *tb[NL80211_ATTR_MAX + 1];
+  struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
+  struct nlattr *sinfo[NL80211_STA_INFO_MAX + 1];
+  struct nlattr *rinfo[NL80211_RATE_INFO_MAX + 1];
+  //nl_msg_dump(msg, stdout);
+
+  nla_parse(tb,
+            NL80211_ATTR_MAX,
+            genlmsg_attrdata(gnlh, 0),
+            genlmsg_attrlen(gnlh, 0),
+            NULL);
+  /*
+   * TODO: validate the interface and mac address!
+   * Otherwise, there's a race condition as soon as
+   * the kernel starts sending station notifications.
+   */
+
+  if (!tb[NL80211_ATTR_STA_INFO]) {
+    g_message("sta stats missing!"); return NL_SKIP;
+  }
+
+  if (nla_parse_nested(sinfo, NL80211_STA_INFO_MAX,
+                       tb[NL80211_ATTR_STA_INFO], stats_policy)) {
+    g_message("failed to parse nested attributes!"); return NL_SKIP;
+  }
+
+  if (sinfo[NL80211_STA_INFO_SIGNAL])
+    ((Wifi*)arg)->signal = (int8_t)nla_get_u8(sinfo[NL80211_STA_INFO_SIGNAL]);
+
+  if (sinfo[NL80211_STA_INFO_TX_BITRATE]) {
+    if (nla_parse_nested(rinfo, NL80211_RATE_INFO_MAX,
+                         sinfo[NL80211_STA_INFO_TX_BITRATE], rate_policy))
+      g_message("failed to parse nested rate attributes!");
+    else {
+      if (rinfo[NL80211_RATE_INFO_BITRATE])
+        ((Wifi*)arg)->txrate = nla_get_u16(rinfo[NL80211_RATE_INFO_BITRATE]);
+    }
+  }
+  return NL_SKIP;
+}
+
+static int getWifiStatus(Netlink* nl, Wifi* w)
+{
+  nl->result1 = 1;
+  nl->result2 = 1;
+  w->ifindex = -1;
+  w->ifname[0] = '\0';
+
+  struct nl_msg* msg1 = nlmsg_alloc();
+  if (!msg1) {
+    g_message("Failed to allocate netlink message.");
+    return -2;
+  }
+
+  genlmsg_put(msg1,
+              NL_AUTO_PORT,
+              NL_AUTO_SEQ,
+              nl->id,
+              0,
+              NLM_F_DUMP,
+              NL80211_CMD_GET_INTERFACE,
+              0);
+
+  nl_send_auto(nl->socket, msg1);
+
+  while (nl->result1 > 0) { nl_recvmsgs(nl->socket, nl->cb1); }
+  nlmsg_free(msg1);
+
+  if (w->ifindex < 0) { return -1; }
+
+  struct nl_msg* msg2 = nlmsg_alloc();
+  if (!msg2) {
+    g_message("Failed to allocate netlink message.");
+    return -2;
+  }
+
+  genlmsg_put(msg2,
+              NL_AUTO_PORT,
+              NL_AUTO_SEQ,
+              nl->id,
+              0,
+              NLM_F_DUMP,
+              NL80211_CMD_GET_STATION,
+              0);
+
+  nla_put_u32(msg2, NL80211_ATTR_IFINDEX, w->ifindex);
+  nl_send_auto(nl->socket, msg2);
+  while (nl->result2 > 0) { nl_recvmsgs(nl->socket, nl->cb2); }
+  nlmsg_free(msg2);
+
+  return 0;
+}
+
+/*  public functions  */
+
+void
+gkrellm_wifi_wireless_info_read (void)
+{
+  GkrellmWifiMonitor *wifimon;
+  /* initialize on first read */
+  if (netlink.id < 0) {
+    g_message("initializing NL80211");
+    netlink.id = initNl80211(&netlink, &wifi);
+  }
+  if (netlink.id < 0)
+    g_message (_("Failed to init NL80211: %d"), netlink.id);
+
+  /* TODO: test with more than one WIFI interface :-) */
+  if (getWifiStatus(&netlink, &wifi) != 0)
+    return;
+
+  wifimon = gkrellm_wifi_monitor_find (wifi.ifname);
+
+  if (! wifimon)
+  {
+    wifimon = gkrellm_wifi_monitor_create (wifi.ifname);
+    wifimon->essid = g_strdup (_("n/a"));
+    wifimon->enabled = TRUE;
+  }
+
+  wifimon->quality     = 0;
+  wifimon->quality_max = 0;
+  wifimon->signal      = wifi.signal;
+  wifimon->noise       = 0;
+  wifimon->bitrate     = wifi.txrate*100000;
+
+  /* just put the "dbm above -100" into the percent field. */
+  wifimon->percent = 100 + wifi.signal;
+
+  wifimon->percent = CLAMP (wifimon->percent, 0, 100);
+  wifimon->updated = TRUE;
+}
+/* end netlink */
+#endif
