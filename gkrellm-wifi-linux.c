@@ -442,6 +442,7 @@ typedef struct {
 
 typedef struct {
   char ifname[30];
+  char essid[33]; /* spec says max 32 */
   int ifindex;
   int signal;
   int txrate;
@@ -530,6 +531,11 @@ static int getWifiName_callback(struct nl_msg *msg, void *arg)
 
   if (tb_msg[NL80211_ATTR_IFINDEX])
     ((Wifi*)arg)->ifindex = nla_get_u32(tb_msg[NL80211_ATTR_IFINDEX]);
+
+  if (tb_msg[NL80211_ATTR_SSID])
+    strcpy(((Wifi*)arg)->essid, nla_get_string(tb_msg[NL80211_ATTR_SSID]));
+  else
+    strcpy(((Wifi*)arg)->essid, "n/a");
 
   return NL_SKIP;
 }
@@ -663,6 +669,10 @@ gkrellm_wifi_wireless_info_read (void)
 
   /* just put the "dbm above -100" into the percent field. */
   wifimon->percent = 100 + wifi.signal;
+  if (! wifimon->essid || strcmp (wifimon->essid, wifi.essid)) {
+    g_free (wifimon->essid);
+    wifimon->essid = g_strdup(wifi.essid);
+  }
 
   wifimon->percent = CLAMP (wifimon->percent, 0, 100);
   wifimon->updated = TRUE;
