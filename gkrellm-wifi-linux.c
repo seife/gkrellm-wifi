@@ -446,6 +446,7 @@ typedef struct {
   int ifindex;
   int signal;
   int txrate;
+  unsigned int freq;
 } Wifi;
 
 static Netlink netlink = { .id = -1 };
@@ -532,6 +533,9 @@ static int getWifiName_callback(struct nl_msg *msg, void *arg)
   if (tb_msg[NL80211_ATTR_IFINDEX])
     ((Wifi*)arg)->ifindex = nla_get_u32(tb_msg[NL80211_ATTR_IFINDEX]);
 
+  if (tb_msg[NL80211_ATTR_WIPHY_FREQ])
+    ((Wifi*)arg)->freq = nla_get_u32(tb_msg[NL80211_ATTR_WIPHY_FREQ]);
+
   if (tb_msg[NL80211_ATTR_SSID])
     strcpy(((Wifi*)arg)->essid, nla_get_string(tb_msg[NL80211_ATTR_SSID]));
   else
@@ -589,6 +593,7 @@ static int getWifiStatus(Netlink* nl, Wifi* w)
   nl->result1 = 1;
   nl->result2 = 1;
   w->ifindex = -1;
+  w->freq = 0;
   w->ifname[0] = '\0';
 
   struct nl_msg* msg1 = nlmsg_alloc();
@@ -666,6 +671,9 @@ gkrellm_wifi_wireless_info_read (void)
 
   wifimon->signal      = wifi.signal;
   wifimon->bitrate     = wifi.txrate*100000;
+#if ! USE_LEGACY_WEXT
+  wifimon->frequency   = wifi.freq;
+#endif
 
   /* just put the "dbm above -100" into the percent field. */
   wifimon->percent = 100 + wifi.signal;

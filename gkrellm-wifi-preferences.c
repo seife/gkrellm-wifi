@@ -86,6 +86,9 @@ gkrellm_wifi_preferences_show (GtkWidget *tabs_vbox)
 #endif
     N_("\t$B\tbit rate in bps\n"),
     N_("\t$E\textended network name (ESSID)\n"),
+#if ! USE_LEGACY_WEXT
+    N_("\t$f\tfrequency in MHz\n"),
+#endif
   };
 
   g_assert (tabs_vbox != NULL);
@@ -176,6 +179,7 @@ gkrellm_wifi_preferences_show (GtkWidget *tabs_vbox)
   format_list = g_list_append (format_list, "\\t$Q%\\b$s\\fdBm");
   format_list = g_list_append (format_list, "\\t$Q%\\r$B\\b$s\\fdBm");
   format_list = g_list_append (format_list, "\\t$Q%\\r$B\\b$E: $s\\fdBm");
+  format_list = g_list_append (format_list, "\\t$Q%\\b$Bb\\r$fMHz");
 #endif
   gtk_combo_set_popdown_strings (GTK_COMBO (format_combo), format_list);
 

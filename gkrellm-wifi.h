@@ -69,6 +69,9 @@ typedef struct {
   gint                noise;
 #endif
   gint                signal;
+#if ! USE_LEGACY_WEXT
+  guint32             frequency;
+#endif
   gint32              bitrate;
 
   gchar              *essid;

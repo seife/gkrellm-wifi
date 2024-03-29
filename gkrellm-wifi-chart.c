@@ -415,6 +415,19 @@ create_chart_text (GkrellmWifiMonitor *wifimon)
       g_free (tmp);
     }
 
+#if ! USE_LEGACY_WEXT
+  if (strstr ( ret, "$f"))
+    {
+      value = g_strdup_printf ("%d", wifimon->frequency);
+
+      tmp = strreplace (ret, "$f", value);
+      g_free (value);
+
+      g_free (ret);
+      ret = g_strdup (tmp);
+      g_free (tmp);
+    }
+#endif
   if (wifimon->essid != NULL && strstr (ret, "$E"))
     {
       tmp = strreplace (ret, "$E", wifimon->essid);
