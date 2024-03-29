@@ -658,10 +658,7 @@ gkrellm_wifi_wireless_info_read (void)
     wifimon->enabled = TRUE;
   }
 
-  wifimon->quality     = 0;
-  wifimon->quality_max = 0;
   wifimon->signal      = wifi.signal;
-  wifimon->noise       = 0;
   wifimon->bitrate     = wifi.txrate*100000;
 
   /* just put the "dbm above -100" into the percent field. */

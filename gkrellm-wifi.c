@@ -131,10 +131,12 @@ gkrellm_wifi_update (void)
 
               if (! wifimon->updated)
                 {
+#if USE_LEGACY_WEXT
                   wifimon->quality     = 0;
                   wifimon->quality_max = 0;
-                  wifimon->signal      = 0;
                   wifimon->noise       = 0;
+#endif
+                  wifimon->signal      = 0;
                   wifimon->bitrate     = 0;
                   wifimon->percent     = 0;
 

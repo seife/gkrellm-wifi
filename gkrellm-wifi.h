@@ -63,11 +63,12 @@ typedef struct {
   gboolean            updated;
 
   gchar              *interface;
+#if USE_LEGACY_WEXT
   gint                quality;
   guint8              quality_max;
-  gint                signal;
   gint                noise;
-
+#endif
+  gint                signal;
   gint32              bitrate;
 
   gchar              *essid;
