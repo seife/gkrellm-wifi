@@ -24,9 +24,6 @@
  * which is public domain
  */
 
-/* define to 1 for old code */
-#define USE_LEGACY_WEXT 0
-
 #include "gkrellm-wifi.h"
 
 #include <errno.h>
@@ -655,6 +652,7 @@ gkrellm_wifi_wireless_info_read (void)
 
   if (! wifimon)
   {
+    /* this never happens, because gkrellm_wifi_preferences_load() already creates it */
     wifimon = gkrellm_wifi_monitor_create (wifi.ifname);
     wifimon->essid = g_strdup (_("n/a"));
     wifimon->enabled = TRUE;

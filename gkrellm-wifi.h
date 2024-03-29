@@ -24,6 +24,8 @@
 
 #include <gkrellm2/gkrellm.h>
 
+/* for new linux netlink code, set this to 0, for all other OS's to 1 */
+#define USE_LEGACY_WEXT 0
 
 #define GKRELLM_WIFI_VERSION_MAJOR         0
 #define GKRELLM_WIFI_VERSION_MINOR         9
@@ -32,8 +34,11 @@
 #define GKRELLM_WIFI_PLUGIN_NAME           "gkrellm-wifi"            /*  messages            */
 #define GKRELLM_WIFI_PLUGIN_KEYWORD        GKRELLM_WIFI_PLUGIN_NAME  /*  configuration file  */
 
+#if USE_LEGACY_WEXT
 #define GKRELLM_WIFI_DEFAULT_FORMAT_STRING "\\t$Q%\\b$R\\fdB"
-
+#else
+#define GKRELLM_WIFI_DEFAULT_FORMAT_STRING "\\t$Q%\\b$s\\fdBm"
+#endif
 
 typedef struct {
   GkrellmChart       *chart;

@@ -330,6 +330,7 @@ create_chart_text (GkrellmWifiMonitor *wifimon)
       g_free (tmp);
     }
 
+#if USE_LEGACY_WEXT
   if (strstr (ret, "$q"))
     {
       value = g_strdup_printf ("%d", wifimon->quality);
@@ -353,6 +354,7 @@ create_chart_text (GkrellmWifiMonitor *wifimon)
       ret = g_strdup (tmp);
       g_free (tmp);
     }
+#endif
 
   if (strstr (ret, "$s"))
     {
@@ -366,6 +368,7 @@ create_chart_text (GkrellmWifiMonitor *wifimon)
       g_free (tmp);
     }
 
+#if USE_LEGACY_WEXT
   if (strstr (ret, "$n"))
     {
       value = g_strdup_printf ("%d", wifimon->noise);
@@ -389,6 +392,7 @@ create_chart_text (GkrellmWifiMonitor *wifimon)
       ret = g_strdup (tmp);
       g_free (tmp);
     }
+#endif
 
   if (strstr (ret, "$B"))
     {

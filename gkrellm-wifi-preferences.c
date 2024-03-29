@@ -75,11 +75,15 @@ gkrellm_wifi_preferences_show (GtkWidget *tabs_vbox)
     N_("Substitution variables for the chart labels format string:\n"),
     N_("\t$M\tmaximum chart value\n"),
     N_("\t$Q\tlink quality in percent\n"),
+#if USE_LEGACY_WEXT
     N_("\t$q\tlink quality\n"),
     N_("\t$m\tmaximum link quality of the card\n"),
+#endif
     N_("\t$s\tsignal level in dBm\n"),
+#if USE_LEGACY_WEXT
     N_("\t$n\tnoise level in dBm\n"),
     N_("\t$R\tsignal to noise ratio in dB\n"),
+#endif
     N_("\t$B\tbit rate in bps\n"),
     N_("\t$E\textended network name (ESSID)\n"),
   };
@@ -161,12 +165,18 @@ gkrellm_wifi_preferences_show (GtkWidget *tabs_vbox)
 
   format_list = g_list_append (format_list, gkrellm_wifi_format_string);
   format_list = g_list_append (format_list, GKRELLM_WIFI_DEFAULT_FORMAT_STRING);
+#if USE_LEGACY_WEXT
   format_list = g_list_append (format_list, "\\t$Q%\\t\\r$M\\b$R\\fdB");
   format_list = g_list_append (format_list, "\\t$q/$m\\b$s/$n\\fdBm");
   format_list = g_list_append (format_list, "\\t$Q%\\b$n\\fdBm\\p$s\\fdBm");
   format_list = g_list_append (format_list, "\\t$Q%\\r$B\\b$n\\fdBm\\p$s\\fdBm");
   format_list = g_list_append (format_list, "\\t$Q%\\r$B\\b$E: $R\\fdB");
-
+#else
+  format_list = g_list_append (format_list, "\\t$Q%\\t\\r$M\\b$s\\fdBm");
+  format_list = g_list_append (format_list, "\\t$Q%\\b$s\\fdBm");
+  format_list = g_list_append (format_list, "\\t$Q%\\r$B\\b$s\\fdBm");
+  format_list = g_list_append (format_list, "\\t$Q%\\r$B\\b$E: $s\\fdBm");
+#endif
   gtk_combo_set_popdown_strings (GTK_COMBO (format_combo), format_list);
 
   g_list_free (format_list);
